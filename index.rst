@@ -287,7 +287,7 @@ The policy allows the user to assume and list roles
 
 .. code:: console
 
-    aws iam get-policy-version --policy-arn <lambdaManager policy ARN> --version-id v1 --profile Chris
+    aws iam get-policy-version --policy-arn <lambdaManager policy ARN> --version-id v1 --profile chris
 
 - From the output we can see the role has Lambda admin permissions
 
